@@ -106,6 +106,11 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
     protected $relations = [];
 
     /**
+     * @var array
+     */
+    protected static $dynamicRelations = [];
+
+    /**
      * The attributes that should be hidden for arrays.
      *
      * @var array
@@ -2658,6 +2663,12 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         if (method_exists($this, $key)) {
             return $this->getRelationshipFromMethod($key);
         }
+
+        // If the key exists in the dynamic relationships array, call that relationship
+        // and return the results as if it was a normal method defined within the model
+        if($this->hasDynamicRelation($key)){
+            return $this->getDynamicRelationship($key);
+        }
     }
 
     /**
@@ -3258,6 +3269,51 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         $this->relations = $relations;
 
         return $this;
+    }
+
+    /**
+     * Determine if model has given dynamic relation
+     * @param  string $key
+     * @return bool
+     */
+    public function hasDynamicRelation($key)
+    {
+        return array_key_exists($key, static::$dynamicRelations);
+    }
+
+    /**
+     * Get a dynamic relationship value
+     *
+     * @param  string $key
+     * @return mixed
+     *
+     * @throws \LogicException
+     */
+    public function getDynamicRelationship($key)
+    {
+        $callable = static::$dynamicRelations[$key];
+
+        $relations = $callable($this);
+
+        if (!$relations instanceof Relation) {
+            throw new LogicException(
+                'Relationship method must return an object of type '
+                . 'Illuminate\Database\Eloquent\Relations\Relation'
+            );
+        }
+
+        $this->setRelation($key, $results = $relations->getResults());
+
+        return $results;
+    }
+
+    /**
+     * @param  string  $key
+     * @param  Callable  $callback
+     */
+    public static function setDynamicRelation($key, $callback)
+    {
+        static::$dynamicRelations[$key] = $callback;
     }
 
     /**
